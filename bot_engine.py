@@ -507,3 +507,42 @@ def market_is_open() -> bool:
 
 def last_scan_time() -> str:
     return datetime.now(PST).strftime("%d %b %Y, %I:%M %p PKT")
+
+
+# ─── Module-level helpers (used by app.py) ────────────────────────────────
+PSX_UNIVERSE = CONFIG["STOCK_UNIVERSE"]
+
+_bot_instance = None
+
+def run_daily_scan(tickers=None):
+    global _bot_instance
+    _bot_instance = PSXTradingBot()
+    return _bot_instance.run_daily_scan(tickers)
+
+def get_top_picks(results, n=5):
+    return [r for r in results if r["signal"] in ("STRONG BUY", "BUY")][:n]
+
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
+    avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
+    rs = avg_gain / avg_loss.replace(0, float('nan'))
+    return 100 - (100 / (1 + rs))
+
+def compute_macd(series):
+    import pandas as pd
+    ema12 = series.ewm(span=12, adjust=False).mean()
+    ema26 = series.ewm(span=26, adjust=False).mean()
+    macd  = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    hist   = macd - signal
+    return macd, signal, hist
+
+def compute_bollinger(series, period=20):
+    sma   = series.rolling(period).mean()
+    std   = series.rolling(period).std()
+    upper = sma + 2 * std
+    lower = sma - 2 * std
+    return upper, sma, lower
